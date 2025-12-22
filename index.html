@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>8-bit Retro Pong - Galaxy Edition</title>
+    <style>
+        .crt-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), 
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 4px, 3px 100%; pointer-events: none; z-index: 100;
+        }
+        body::after {
+            content: " ";
+            display: block; position: fixed; top: 0; left: 0; bottom: 0; right: 0;
+            background: radial-gradient(circle, rgba(18, 16, 16, 0) 0%, rgba(18, 16, 16, 0.75) 100%);
+            opacity: 0.15; pointer-events: none; z-index: 101;
+            animation: flicker 0.15s infinite;
+        }
+        @keyframes flicker { 0% { opacity: 0.15; } 50% { opacity: 0.18; } 100% { opacity: 0.15; } }
+        body { 
+            margin: 0;
+            background-color: #111; 
+            /* 預設載入第一個 GIF */
+            background-image: url('https://usagif.com/wp-content/uploads/gif/outerspace-77.gif.webp');
+            background-size: cover; background-position: center; background-repeat: no-repeat;
+            color: white; font-family: 'Courier New', Courier, monospace; overflow: hidden;
+            touch-action: none; 
+            transition: background-image 0.5s ease-in-out; /* 切換背景時更平滑 */
+        }
+        canvas { display: block; background: rgba(0, 0, 0, 0.3); }
+        #overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10;
+        }
+        h1 { font-size: 3rem; margin: 0 0 10px 0; text-shadow: 0 0 20px #fff; letter-spacing: 5px; text-align: center; }
+        .config-area { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+        .config-row { display: flex; gap: 10px; }
+        .player-config { text-align: center; border: 2px solid #333; padding: 10px; border-radius: 8px; background: rgba(255,255,255,0.05); min-width: 120px; }
+        .color-box { width: 30px; height: 30px; cursor: pointer; border: 2px solid transparent; transition: 0.2s; }
+        .color-box.active { border-color: white; transform: scale(1.1); box-shadow: 0 0 10px white; }
+        .picker-row { display: flex; gap: 5px; justify-content: center; margin-top: 5px; }
+        .music-btn, .score-btn { padding: 5px 10px; background: #222; color: #fff; border: 1px solid #555; cursor: pointer; font-family: inherit; font-size: 0.8rem; }
+        .music-btn.active, .score-btn.active { background: #00ffcc; color: #000; font-weight: bold; border-color: #fff; }
+        .score-btn.active { background: #ffcc00; }
+        #start-btn { margin-top: 15px; padding: 12px 40px; font-size: 1.2rem; background: #fff; color: #000; border: none; cursor: pointer; font-family: inherit; font-weight: bold; transition: 0.2s; }
+        #score-ui { position: absolute; width: 100%; text-align: center; top: 30px; font-size: 2.5rem; pointer-events: none; z-index: 5; display: none; font-weight: bold; opacity: 0.6; }
+        #msg-ui { position: absolute; width: 100%; text-align: center; top: 75%; font-size: 1.1rem; color: #fff; pointer-events: none; display: none; animation: blink 0.8s infinite; text-shadow: 0 0 10px #fff; }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    </style>
+</head>
+<body>
+    <div class="crt-overlay"></div>
+    <div id="score-ui">0 : 0</div>
+    <div id="msg-ui">TAP SCREEN TO SERVE</div>
+    <div id="overlay">
+        <h1 id="win-msg">PONG ULTIMATE</h1>
+        <div class="config-area">
+            <div class="config-row">
+                <div class="player-config"><div>P1 COLOR</div><div id="p1-colors" class="picker-row"></div></div>
+                <div class="player-config"><div>P2 (AI) COLOR</div><div id="p2-colors" class="picker-row"></div></div>
+            </div>
+            <div class="config-row">
+                <div class="player-config" style="width: 100%;">
+                    <div>SPACE THEME</div>
+                    <div class="picker-row">
+                        <button class="music-btn active" onclick="setBG(0, this)">NEBULA</button>
+                        <button class="music-btn" onclick="setBG(1, this)">GALAXY</button>
+                        <button class="music-btn" onclick="setBG(2, this)">CLASSIC</button>
+                    </div>
+                </div>
+            </div>
+            <div class="config-row">
+                <div class="player-config">
+                    <div>BGM STYLE</div>
+                    <div class="picker-row">
+                        <button class="music-btn active" onclick="setMusicStyle('techno', this)">TECHNO</button>
+                        <button class="music-btn" onclick="setMusicStyle('cyber', this)">CYBER</button>
+                        <button class="music-btn" onclick="setMusicStyle('chip', this)">CHIP</button>
+                    </div>
+                </div>
+                <div class="player-config">
+                    <div>WIN SCORE</div>
+                    <div class="picker-row">
+                        <button class="score-btn" onclick="setWinScore(5, this)">5</button>
+                        <button class="score-btn active" onclick="setWinScore(11, this)">11</button>
+                        <button class="score-btn" onclick="setWinScore(21, this)">21</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <button id="start-btn">START GAME</button>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const overlay = document.getElementById("overlay"), scoreUi = document.getElementById("score-ui"), msgUi = document.getElementById("msg-ui"), winMsg = document.getElementById("win-msg");
+        const colors = ['#ffffff', '#ff4d4d', '#4dff4d', '#4da6ff', '#ffff4d', '#ff4dff', '#00ffff'];
+        let p1Color = colors[3], p2Color = colors[1];
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        let bgmInterval, currentMusicStyle = 'techno', winTarget = 11;
+        
+        // 用來計算時間差的變數
+        let lastTime = 0;
+
+        const bgImages = [
+            'https://usagif.com/wp-content/uploads/gif/outerspace-77.gif.webp',
+            'https://usagif.com/wp-content/uploads/gif/outerspace-58.gif',
+            'https://cdn.britannica.com/29/148329-050-269A9EFE/night-sky-Milky-Way-Galaxy.jpg'
+        ];
+        function setBG(index, btn) {
+            document.body.style.backgroundImage = `url('${bgImages[index]}')`;
+            const buttons = btn.parentElement.querySelectorAll('button');
+            buttons.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            playSound(880, 'sine', 0.1, 0.1);
+        }
+
+        let singularity = { x: 0, y: 0, active: false, r: 60, life: 0, force: 0.3, type: 'BLACK' };
+        let wormholes = { active: false, a: {x:0, y:0}, b: {x:0, y:0}, r: 40, life: 0, cooldown: 0 };
+        let meteors = [], fireParticles = [], ripples = [], ballParticles = []; 
+        let shakeAmount = 0, freezeTimer = 0;
+        let particles = [], stars = [], trail = [], ball, p1, p2, gameState = 'MENU', isP2AI = true;
+
+        function playSound(freq, type = 'square', duration = 0.1, vol = 0.1) {
+            try {
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+                osc.type = type; osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(vol, audioCtx.currentTime); 
+                gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.start(); osc.stop(audioCtx.currentTime + duration);
+            } catch (e) {}
+        }
+
+        const musicPresets = {
+            techno: { bass: [110, 0, 110, 146, 110, 0, 110, 164], bassType: 'sawtooth', tempo: 140, leadFreqs: [440, 523, 587, 659], vol: 0.04 },
+            cyber: { bass: [55, 55, 82, 55, 73, 55, 82, 110], bassType: 'square', tempo: 110, leadFreqs: [220, 246, 261, 329], vol: 0.05 },
+            chip: { bass: [220, 330, 440, 330, 220, 440, 330, 440], bassType: 'triangle', tempo: 160, leadFreqs: [880, 1046, 1174, 1318], vol: 0.08 }
+        };
+        function setMusicStyle(style, btn) {
+            currentMusicStyle = style;
+            document.querySelectorAll('.music-btn').forEach(b => { if(!b.getAttribute('onclick').includes('setBG')) b.classList.remove('active'); });
+            btn.classList.add('active');
+            playSound(440, 'sine', 0.1, 0.1);
+        }
+
+        function setWinScore(score, btn) {
+            winTarget = score;
+            document.querySelectorAll('.score-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            playSound(600, 'sine', 0.1, 0.1);
+        }
+
+        function startBGM() {
+            if (bgmInterval) clearInterval(bgmInterval);
+            let step = 0;
+            bgmInterval = setInterval(() => {
+                const style = musicPresets[currentMusicStyle];
+                if (gameState === 'PLAYING' || gameState === 'WAITING_SERVE') {
+                    const bassNote = style.bass[step % style.bass.length];
+                    if (bassNote > 0) 
+                        playSound(bassNote, style.bassType, 0.15, style.vol);
+                    if (step % 2 === 0 && Math.random() > 0.4) playSound(style.leadFreqs[Math.floor(Math.random()*style.leadFreqs.length)], 'square', 0.1, style.vol * 0.7);
+                    step++;
+                }
+            }, 60000 / (musicPresets[currentMusicStyle].tempo * 2));
+        }
+
+        function triggerShake(amt) { shakeAmount = Math.max(shakeAmount, amt); }
+        function createRipple(x, y) { ripples.push({ x, y, r: 5, alpha: 1.0 }); }
+        
+        function serveBall() {
+            if (gameState !== 'WAITING_SERVE' || freezeTimer > 0) return;
+            gameState = 'PLAYING'; 
+            msgUi.style.display = 'none';
+            const angle = (Math.random()-0.5)*(Math.PI/4);
+            // [修改] 基礎球速從 5 提升到 9
+            const speed = 9; 
+            ball.dx = (ball.x < canvas.width/2 ? speed : -speed)*Math.cos(angle);
+            ball.dy = speed*Math.sin(angle);
+            playSound(600, 'sine', 0.2, 0.2);
+        }
+
+        window.addEventListener('mousedown', () => { if(gameState === 'WAITING_SERVE') serveBall(); });
+        window.addEventListener('touchstart', (e) => { if(gameState === 'WAITING_SERVE') { e.preventDefault(); serveBall(); } }, { passive: false });
+        document.getElementById('start-btn').onclick = (e) => { 
+            e.stopPropagation(); audioCtx.resume(); startBGM();
+            init(); 
+            overlay.style.display = 'none'; scoreUi.style.display = 'block'; 
+            scoreUi.innerText = "0 : 0"; gameState = 'WAITING_SERVE';
+            msgUi.innerText = "TAP SCREEN OR SPACE TO SERVE";
+            msgUi.style.display = 'block'; 
+        };
+
+        let keys = {};
+        window.onkeydown = e => { keys[e.key] = true; if(e.code==='Space') serveBall(); if(e.key.includes('Arrow')) isP2AI=false; };
+        window.onkeyup = e => keys[e.key] = false;
+        canvas.addEventListener('touchmove', (e) => { e.preventDefault(); const touch = e.touches[0]; const rect = canvas.getBoundingClientRect(); p1.y = (touch.clientY - rect.top) - p1.h/2; }, { passive: false });
+
+        function spawnAnomalies() {
+            if (gameState !== 'PLAYING') return;
+            const rand = Math.random();
+            if (rand < 0.003 && !singularity.active) {
+                singularity.x = canvas.width * 0.3 + Math.random() * canvas.width * 0.4;
+                singularity.y = canvas.height * 0.2 + Math.random() * canvas.height * 0.6;
+                singularity.type = Math.random() > 0.5 ? 'BLACK' : 'WHITE';
+                singularity.active = true; singularity.life = 400;
+                playSound(singularity.type === 'BLACK' ? 50 : 200, 'sawtooth', 0.5, 0.1); 
+                triggerShake(6);
+            } else if (rand > 0.998 && !wormholes.active) {
+                const x = canvas.width * 0.2 + Math.random() * canvas.width * 0.6;
+                wormholes.a = { x: x, y: 50 }; wormholes.b = { x: canvas.width - x, y: canvas.height - 50 };
+                wormholes.active = true; wormholes.life = 500; wormholes.cooldown = 0;
+            }
+            if (Math.random() < 0.004) {
+                meteors.push({
+                    x: Math.random() * canvas.width, y: -50, vx: (Math.random() - 0.5) * 4, vy: Math.random() * 2.5 + 1.5,
+                    r: Math.random() * 15 + 12, rot: 0, vRot: (Math.random() - 0.5) * 0.1
+                });
+            }
+        }
+
+        function createParticles(x, y, color, count=12, speed=12) { 
+            for(let i=0; i<count; i++) particles.push({ x, y, vx: (Math.random()-0.5)*speed, vy: (Math.random()-0.5)*speed, life: 1.0, color });
+        }
+        
+        function createStars() { 
+            stars = [];
+            for(let i=0; i<200; i++) stars.push({ x: Math.random()*canvas.width, y: Math.random()*canvas.height, size: Math.random()*1.5+0.5, vx: (Math.random()-0.5)*0.2, vy: (Math.random()-0.5)*0.2 });
+        }
+
+        function init() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            const ph = canvas.height * 0.21;
+            ball = { x: canvas.width/2, y: canvas.height/2, dx: 0, dy: 0, r: 10, color: "#ffffff", energyLevel: 0, invincible: false };
+            p1 = { x: 30, y: canvas.height/2-ph/2, w: 15, h: ph, score: 0, flash: 0 };
+            p2 = { x: canvas.width-45, y: canvas.height/2-ph/2, w: 15, h: ph, score: 0, flash: 0 };
+            singularity.active = false;
+            wormholes.active = false; meteors = []; fireParticles = []; ripples = []; ballParticles = []; shakeAmount = 0;
+            freezeTimer = 0; trail = []; createStars();
+        }
+
+        function update(timeScale) {
+            // timeScale 是基於 60FPS 的倍率 (60FPS時約為1，30FPS時約為2)
+            if (freezeTimer > 0) { freezeTimer--; return; }
+            
+            // 讓背景星星也受時間影響
+            stars.forEach(s => { 
+                s.x += s.vx * timeScale; 
+                s.y += s.vy * timeScale; 
+                if (s.x < 0) s.x = canvas.width; if (s.x > canvas.width) s.x = 0; if (s.y < 0) s.y = canvas.height; if (s.y > canvas.height) s.y = 0; 
+            });
+
+            if (gameState === 'MENU') return;
+            
+            // [修改] 板子速度從 12 提升到 22，並乘上 timeScale
+            const paddleSpeed = 22 * timeScale;
+
+            if (keys['w'] || keys['W']) p1.y -= paddleSpeed;
+            if (keys['s'] || keys['S']) p1.y += paddleSpeed;
+            
+            if (isP2AI && gameState === 'PLAYING') {
+                const targetY = ball.y - p2.h/2;
+                // [修改] AI 速度從 9/4 提升到 16/7 以應對更快的球
+                const aiMaxSpeed = ball.dx > 0 ? 16 : 7;
+                const aiCurrentSpeed = aiMaxSpeed * timeScale;
+                
+                if (Math.abs(p2.y - targetY) > 10) p2.y += (p2.y < targetY ? aiCurrentSpeed : -aiCurrentSpeed);
+            } else if (!isP2AI) { 
+                if (keys['ArrowUp']) p2.y -= paddleSpeed; 
+                if (keys['ArrowDown']) p2.y += paddleSpeed;
+            }
+
+            [p1, p2].forEach(p => p.y = Math.max(0, Math.min(canvas.height-p.h, p.y)));
+            
+            if (gameState === 'PLAYING') {
+                spawnAnomalies();
+                const curSpd = Math.sqrt(ball.dx**2 + ball.dy**2);
+                
+                // [修改] 因基礎速度提升，調整變色與無敵的門檻
+                ball.invincible = (curSpd >= 18); // 原為 11
+                
+                let spawnCount = 0, particleColors = [];
+                // [修改] 調整顏色階級門檻: 7->10, 11->15, 15->20
+                if (curSpd < 10) { ball.color = "#ffffff"; ball.energyLevel = 0; }
+                else if (curSpd < 15) {
+                    let ratio = (curSpd - 10) / 5;
+                    ball.color = `rgb(255, 255, ${Math.floor(255 * (1 - ratio))})`;
+                    ball.energyLevel = 1; spawnCount = 1; particleColors = ['#ffff00'];
+                } else if (curSpd < 20) {
+                    let ratio = (curSpd - 15) / 5;
+                    ball.color = `rgb(255, ${Math.floor(255 - 127 * ratio)}, 0)`;
+                    ball.energyLevel = 2; spawnCount = 4; particleColors = ['#ff9800', '#ffeb3b'];
+                } else {
+                    let ratio = Math.min((curSpd - 20) / 5, 1);
+                    ball.color = `rgb(255, ${Math.floor(128 * (1 - ratio))}, 0)`;
+                    ball.energyLevel = 3; spawnCount = 8; particleColors = ['#ff0000', '#ff5722', '#ffffff'];
+                }
+
+                for(let i=0; i<spawnCount; i++) {
+                    ballParticles.push({
+                        x: ball.x, y: ball.y, vx: -ball.dx * 0.2 + (Math.random()-0.5)*4, vy: -ball.dy * 0.2 + (Math.random()-0.5)*4,
+                        life: 1.0, size: Math.random() * (ball.energyLevel * 2 + 2), color: particleColors[Math.floor(Math.random()*particleColors.length)]
+                    });
+                }
+
+                meteors.forEach((m, idx) => {
+                    m.x += m.vx * timeScale; 
+                    m.y += m.vy * timeScale; 
+                    m.rot += m.vRot * timeScale;
+                    if (Math.random() > 0.3) fireParticles.push({ x: m.x, y: m.y, vx: (Math.random()-0.5)*2, vy: -Math.random()*3, life: 1.0, size: Math.random()*8+4, color: '#ff5722' });
+                    
+                    if (Math.hypot(m.x - ball.x, m.y - ball.y) < m.r + ball.r) {
+                        if (ball.invincible) { createParticles(m.x, m.y, '#ff5722', 20, 15); playSound(100, 'sawtooth', 0.2, 0.1); triggerShake(10); meteors.splice(idx, 1); } 
+                        else { const angle = Math.atan2(ball.y - m.y, ball.x - m.x); ball.dx = Math.cos(angle) * curSpd; ball.dy = Math.sin(angle) * curSpd; createParticles(ball.x, ball.y, '#ff5722'); playSound(200, 'square', 0.1, 0.1); triggerShake(curSpd * 2); meteors.splice(idx, 1); }
+                    }
+                    if (m.y > canvas.height + 100) meteors.splice(idx, 1);
+                });
+                
+                // 粒子與特效的更新也加上 timeScale
+                fireParticles = fireParticles.filter(p => { p.y += p.vy * timeScale; p.life -= 0.04 * timeScale; return p.life > 0; });
+                ballParticles = ballParticles.filter(p => { p.x += p.vx * timeScale; p.y += p.vy * timeScale; p.life -= 0.03 * timeScale; return p.life > 0; });
+                ripples = ripples.filter(r => { r.r += 4 * timeScale; r.alpha -= 0.03 * timeScale; return r.alpha > 0; });
+                
+                if (singularity.active && !ball.invincible) {
+                    singularity.life -= 1 * timeScale;
+                    const dist = Math.hypot(singularity.x - ball.x, singularity.y - ball.y);
+                    if (dist < 300) {
+                        const angle = Math.atan2(singularity.y - ball.y, singularity.x - ball.x);
+                        const multi = singularity.type === 'BLACK' ? 1 : -1;
+                        // 引力影響也乘上 timeScale
+                        ball.dx += Math.cos(angle) * singularity.force * (1 - dist/300) * multi * timeScale;
+                        ball.dy += Math.sin(angle) * singularity.force * (1 - dist/300) * multi * timeScale;
+                    }
+                    if (singularity.life <= 0) singularity.active = false;
+                }
+
+                if (wormholes.active) {
+                    wormholes.life -= 1 * timeScale;
+                    if(wormholes.cooldown > 0) wormholes.cooldown -= 1 * timeScale;
+                    if (!ball.invincible && wormholes.cooldown <= 0) {
+                        if (Math.hypot(wormholes.a.x - ball.x, wormholes.a.y - ball.y) < wormholes.r) { ball.x = wormholes.b.x; ball.y = wormholes.b.y; wormholes.cooldown = 30; playSound(800, 'sine', 0.3, 0.1); }
+                        else if (Math.hypot(wormholes.b.x - ball.x, wormholes.b.y - ball.y) < wormholes.r) { ball.x = wormholes.a.x; ball.y = wormholes.a.y; wormholes.cooldown = 30; playSound(800, 'sine', 0.3, 0.1); }
+                    }
+                    if (wormholes.life <= 0) wormholes.active = false;
+                }
+
+                trail.push({x: ball.x, y: ball.y, color: ball.color});
+                let maxTrail = 10 + ball.energyLevel * 12;
+                while (trail.length > maxTrail) trail.shift();
+                
+                // [修改] 球的移動乘上 timeScale
+                ball.x += ball.dx * timeScale; 
+                ball.y += ball.dy * timeScale;
+                
+                if (ball.y + ball.r > canvas.height) { ball.dy *= -1; ball.y = canvas.height - ball.r; createRipple(ball.x, canvas.height); playSound(150, 'square', 0.1, 0.05); triggerShake(Math.abs(ball.dy) * 0.5); } 
+                else if (ball.y - ball.r < 0) { ball.dy *= -1; ball.y = ball.r; createRipple(ball.x, 0); playSound(150, 'square', 0.1, 0.05); triggerShake(Math.abs(ball.dy) * 0.5); }
+
+                [p1, p2].forEach(p => {
+                    if (ball.x+ball.r > p.x && ball.x-ball.r < p.x+p.w && ball.y+ball.r > p.y && ball.y-ball.r < p.y+p.h) {
+                        let cp = (ball.y-(p.y+p.h/2))/(p.h/2); let nextSpd = Math.sqrt(ball.dx**2+ball.dy**2)*1.05;
+                        ball.dx = (p===p1?1:-1)*nextSpd*Math.cos(Math.PI/4*cp); ball.dy = nextSpd*Math.sin(Math.PI/4*cp);
+                        ball.x = (p===p1?p1.x+p1.w+ball.r:p2.x-ball.r);
+                        p.flash = 1.0; createParticles(ball.x, ball.y, p===p1?p1Color:p2Color);
+                        playSound(440, 'triangle', 0.2, 0.2); 
+                        let finalShake = nextSpd * 1.8; if (nextSpd > 10) finalShake += Math.pow(nextSpd - 10, 1.8) * 3.5; triggerShake(finalShake); 
+                    }
+                });
+                if (ball.x < 0 || ball.x > canvas.width) {
+                    const winnerColor = (ball.x < 0 ? p2Color : p1Color);
+                    const baseParticles = [40, 80, 150, 250][ball.energyLevel], freezeFrames = [25, 40, 60, 85][ball.energyLevel];
+                    for(let i=0; i<baseParticles; i++) {
+                        particles.push({
+                            x: ball.x < 0 ? 0 : canvas.width, y: ball.y,
+                            vx: (ball.x < 0 ? 1 : -1) * (Math.random() * (10 + ball.energyLevel * 10)),
+                            vy: (Math.random() - 0.5) * (20 + ball.energyLevel * 10),
+                            life: 1.5 + Math.random(), color: Math.random() > 0.3 ? winnerColor : ball.color
+                        });
+                    }
+                    playSound(60 - ball.energyLevel * 10, 'sawtooth', 1.0, 0.4);
+                    triggerShake(20 + ball.energyLevel * 15); freezeTimer = freezeFrames; 
+
+                    if (ball.x > canvas.width) p1.score++; else p2.score++;
+                    scoreUi.innerText = `${p1.score} : ${p2.score}`;
+                    if (p1.score >= winTarget || p2.score >= winTarget) { 
+                        gameState = 'MENU';
+                        winMsg.innerText = `PLAYER ${p1.score>=winTarget?1:2} WINS!`; 
+                        winMsg.style.color = p1.score>=winTarget?p1Color:p2Color; overlay.style.display='flex'; 
+                    } else { 
+                        gameState = 'WAITING_SERVE';
+                        msgUi.style.display='block'; 
+                        ball.x = canvas.width/2; ball.y = canvas.height/2; ball.dx = 0; ball.dy = 0; 
+                        singularity.active = false; meteors=[]; ballParticles=[];
+                    }
+                }
+            }
+            particles = particles.filter(p => { p.x+=p.vx * timeScale; p.y+=p.vy * timeScale; p.life-=0.02 * timeScale; return p.life>0; });
+            if (shakeAmount > 0) shakeAmount *= 0.88; 
+        }
+
+        function draw() {
+            ctx.save();
+            if (shakeAmount > 0.1) ctx.translate((Math.random()-0.5)*shakeAmount, (Math.random()-0.5)*shakeAmount);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            stars.forEach(s => { ctx.fillStyle = "rgba(255,255,255,0.6)"; ctx.beginPath(); ctx.arc(s.x, s.y, s.size, 0, Math.PI*2); ctx.fill(); });
+            ripples.forEach(r => { ctx.save(); ctx.globalAlpha = r.alpha; ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, Math.PI*2); ctx.stroke(); ctx.restore(); });
+            fireParticles.forEach(p => { ctx.globalAlpha = p.life; ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill(); });
+            ballParticles.forEach(p => {
+                ctx.save(); ctx.globalAlpha = p.life; ctx.fillStyle = p.color;
+                ctx.shadowBlur = ball.energyLevel * 5; ctx.shadowColor = p.color;
+                ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill(); ctx.restore();
+            });
+            meteors.forEach(m => {
+                ctx.save(); ctx.translate(m.x, m.y); ctx.rotate(m.rot); ctx.fillStyle = "#4a3b2b"; ctx.beginPath();
+                for(let i=0; i<6; i++) { const a=(Math.PI*2/6)*i, r2=m.r*(0.8+Math.random()*0.4); ctx.lineTo(Math.cos(a)*r2, Math.sin(a)*r2); }
+                ctx.closePath(); ctx.fill(); ctx.strokeStyle="#ff5722"; ctx.stroke(); ctx.restore();
+            });
+            if (singularity.active) {
+                const grad = ctx.createRadialGradient(singularity.x, singularity.y, 0, singularity.x, singularity.y, singularity.r);
+                if (singularity.type === 'BLACK') { grad.addColorStop(0, '#000'); grad.addColorStop(0.5, '#4b0082'); grad.addColorStop(1, 'transparent'); } 
+                else { grad.addColorStop(0, '#fff'); grad.addColorStop(0.5, '#00ffff'); grad.addColorStop(1, 'transparent'); }
+                ctx.fillStyle = grad;
+                ctx.beginPath(); ctx.arc(singularity.x, singularity.y, singularity.r + Math.sin(Date.now()/100)*8, 0, Math.PI*2); ctx.fill();
+            }
+            if (wormholes.active) {
+                [wormholes.a, wormholes.b].forEach(pt => {
+                    const grad = ctx.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, wormholes.r);
+                    grad.addColorStop(0, '#fff'); grad.addColorStop(0.4, '#00ffcc'); grad.addColorStop(1, 'transparent');
+                    ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(pt.x, pt.y, wormholes.r, 0, Math.PI*2); ctx.fill();
+                });
+            }
+            trail.forEach((t, i) => { 
+                ctx.fillStyle = t.color; ctx.globalAlpha = (i / trail.length) * 0.5;
+                ctx.beginPath(); ctx.arc(t.x, t.y, ball.r * (0.5 + 0.5 * i / trail.length), 0, Math.PI * 2); ctx.fill(); 
+            });
+            ctx.globalAlpha = 1.0; ctx.save();
+            ctx.shadowBlur = 10 + (ball.invincible ? 25 : ball.energyLevel * 10); ctx.shadowColor = ball.color;
+            ctx.fillStyle = ball.color; ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI*2); ctx.fill(); ctx.restore();
+            [p1, p2].forEach(p => {
+                const baseColor = (p===p1?p1Color:p2Color);
+                ctx.save(); ctx.shadowBlur = 5 + (p.flash * 35); ctx.shadowColor = baseColor;
+                ctx.globalAlpha = 0.4 + (p.flash * 0.6); ctx.fillStyle = baseColor;
+                ctx.fillRect(p.x, p.y, p.w, p.h);
+                if (p.flash > 0) { ctx.globalAlpha = p.flash; ctx.fillStyle = "#fff"; ctx.fillRect(p.x, p.y, p.w, p.h); p.flash *= 0.92; }
+                ctx.restore();
+            });
+            particles.forEach(p => { ctx.fillStyle = p.color; ctx.globalAlpha = p.life; ctx.fillRect(p.x, p.y, 4, 4); });
+            ctx.restore();
+        }
+
+        // [修改] loop 函式現在接受 timestamp 並計算 delta time
+        function loop(timestamp) {
+            if (!lastTime) lastTime = timestamp;
+            const deltaTime = timestamp - lastTime;
+            lastTime = timestamp;
+
+            // 計算時間倍率，目標為 60FPS (約16.67ms 一幀)
+            // 如果畫面延遲 (例如30FPS)，deltaTime會是33ms，timeScale會是2.0，移動距離就會加倍
+            // 我們限制 timeScale 最大為 3，避免切換分頁時數值過大導致穿牆
+            const timeScale = Math.min(deltaTime / 16.67, 3.0);
+
+            update(timeScale); 
+            draw(); 
+            requestAnimationFrame(loop);
+        }
+
+        function createColorPickers() {
+            [p1Color, p2Color].forEach((pc, i) => {
+                const container = document.getElementById(`p${i+1}-colors`);
+                colors.forEach(c => {
+                    const b = document.createElement('div'); b.className = `color-box ${c===(i===0?p1Color:p2Color)?'active':''}`; b.style.backgroundColor = c;
+                    b.onclick = (e) => { e.stopPropagation(); container.querySelectorAll('.color-box').forEach(x => x.classList.remove('active')); b.classList.add('active'); if(i===0) p1Color=c; else p2Color=c; };
+                    container.appendChild(b);
+                });
+            });
+        }
+        window.onresize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; };
+        createColorPickers(); init(); requestAnimationFrame(loop);
+    </script>
+</body>
+</html>
