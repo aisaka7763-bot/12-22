@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>8-bit Retro Pong - Hypervelocity Edition V9</title>
+    <title>8-bit Retro Pong - Hypervelocity Edition V9.2</title>
     <style>
         .crt-overlay {
             position: fixed;
@@ -128,7 +128,7 @@
 
         let singularities = []; 
         let wormholes = [];
-        let meteors = [], fireParticles = [], ripples = [], ballParticles = [], lightnings = [], borderParticles = [], anomalyParticles = []; 
+        let meteors = [], fireParticles = [], ripples = [], ballParticles = [], lightnings = [], borderParticles = [], anomalyParticles = [];
         let shakeAmount = 0, freezeTimer = 0;
         let particles = [], stars = [], trail = [], ball, p1, p2, gameState = 'MENU', isP2AI = true;
         
@@ -144,12 +144,266 @@
             } catch (e) {}
         }
 
+        // 新增：閃電滋滋聲效果（白噪音 + 快速變頻）
+        function playLightningSound(power = 0) {
+            try {
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const duration = 0.15 + power * 0.05;
+                const vol = 0.08 + power * 0.02;
+                
+                // 白噪音層
+                const bufferSize = audioCtx.sampleRate * duration;
+                const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+                const noise = audioCtx.createBufferSource();
+                noise.buffer = buffer;
+                
+                // 高通濾波器（只保留高頻滋滋聲）
+                const filter = audioCtx.createBiquadFilter();
+                filter.type = 'highpass';
+                filter.frequency.value = 2000 + power * 1000;
+                
+                const gain = audioCtx.createGain();
+                gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+                
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(audioCtx.destination);
+                noise.start();
+                noise.stop(audioCtx.currentTime + duration);
+                
+                // 疊加一個快速下降的高頻音（電弧感）
+                const osc = audioCtx.createOscillator();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(3000 + power * 2000, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(500, audioCtx.currentTime + duration);
+                
+                const gain2 = audioCtx.createGain();
+                gain2.gain.setValueAtTime(vol * 0.5, audioCtx.currentTime);
+                gain2.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+                
+                osc.connect(gain2);
+                gain2.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch (e) {}
+        }
+
+        // 新增：黑洞重低音脈動
+        function playBlackHoleSound() {
+            try {
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const duration = 0.8;
+                
+                // 極低頻脈動
+                const osc = audioCtx.createOscillator();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(30, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(20, audioCtx.currentTime + duration);
+                
+                const gain = audioCtx.createGain();
+                gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+                
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+                
+                // 疊加低頻噪音（引力波感）
+                const osc2 = audioCtx.createOscillator();
+                osc2.type = 'sawtooth';
+                osc2.frequency.value = 40;
+                
+                const gain2 = audioCtx.createGain();
+                gain2.gain.setValueAtTime(0.08, audioCtx.currentTime);
+                gain2.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+                
+                osc2.connect(gain2);
+                gain2.connect(audioCtx.destination);
+                osc2.start();
+                osc2.stop(audioCtx.currentTime + duration);
+            } catch (e) {}
+        }
+
+        // 新增：白洞高頻脈動
+        function playWhiteHoleSound() {
+            try {
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const duration = 0.6;
+                
+                // 高頻上升音（能量釋放感）
+                const osc = audioCtx.createOscillator();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(2000, audioCtx.currentTime + duration);
+                
+                const gain = audioCtx.createGain();
+                gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+                
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+                
+                // 疊加閃爍感
+                const osc2 = audioCtx.createOscillator();
+                osc2.type = 'square';
+                osc2.frequency.value = 1200;
+                
+                const gain2 = audioCtx.createGain();
+                gain2.gain.setValueAtTime(0.05, audioCtx.currentTime);
+                gain2.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration * 0.5);
+                
+                osc2.connect(gain2);
+                gain2.connect(audioCtx.destination);
+                osc2.start();
+                osc2.stop(audioCtx.currentTime + duration * 0.5);
+            } catch (e) {}
+        }
+
+        // 新增：蟲洞空間扭曲音效
+        function playWormholeSound() {
+            try {
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const duration = 0.7;
+                
+                // 頻率掃描（空間扭曲感）
+                const osc = audioCtx.createOscillator();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+                osc.frequency.linearRampToValueAtTime(800, audioCtx.currentTime + duration * 0.5);
+                osc.frequency.linearRampToValueAtTime(200, audioCtx.currentTime + duration);
+                
+                const gain = audioCtx.createGain();
+                gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+                
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+                
+                // 疊加次元感（顫音）
+                const osc2 = audioCtx.createOscillator();
+                osc2.type = 'triangle';
+                osc2.frequency.value = 600;
+                
+                const tremolo = audioCtx.createGain();
+                tremolo.gain.setValueAtTime(0.5, audioCtx.currentTime);
+                
+                const lfo = audioCtx.createOscillator();
+                lfo.frequency.value = 8; // 8Hz顫音
+                lfo.connect(tremolo.gain);
+                
+                const gain2 = audioCtx.createGain();
+                gain2.gain.setValueAtTime(0.08, audioCtx.currentTime);
+                gain2.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+                
+                osc2.connect(tremolo);
+                tremolo.connect(gain2);
+                gain2.connect(audioCtx.destination);
+                
+                lfo.start();
+                osc2.start();
+                lfo.stop(audioCtx.currentTime + duration);
+                osc2.stop(audioCtx.currentTime + duration);
+            } catch (e) {}
+        }
+
+        // 新增：強化擊球音效（能量感）
+        function playPaddleHitSound(speed) {
+            try {
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const baseFreq = 440 + speed * 10;
+                const duration = 0.15;
+                const vol = Math.min(0.25, 0.15 + speed * 0.01);
+                
+                // 主音（撞擊感）
+                const osc = audioCtx.createOscillator();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(baseFreq, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.5, audioCtx.currentTime + duration);
+                
+                const gain = audioCtx.createGain();
+                gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+                
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+                
+                // 疊加衝擊波音（噪音爆發）
+                const noise = audioCtx.createOscillator();
+                noise.type = 'sawtooth';
+                noise.frequency.value = baseFreq * 2;
+                
+                const gain2 = audioCtx.createGain();
+                gain2.gain.setValueAtTime(vol * 0.3, audioCtx.currentTime);
+                gain2.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration * 0.5);
+                
+                noise.connect(gain2);
+                gain2.connect(audioCtx.destination);
+                noise.start();
+                noise.stop(audioCtx.currentTime + duration * 0.5);
+            } catch (e) {}
+        }
+
+        // 新增：進球爆炸音效
+        function playGoalExplosionSound(energyLevel) {
+            try {
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const duration = 0.8 + energyLevel * 0.2;
+                const baseFreq = 60 - energyLevel * 10;
+                
+                // 低頻爆炸
+                const osc = audioCtx.createOscillator();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(baseFreq, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(20, audioCtx.currentTime + duration);
+                
+                const gain = audioCtx.createGain();
+                gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+                
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+                
+                // 爆炸噪音
+                const bufferSize = audioCtx.sampleRate * duration * 0.3;
+                const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+                }
+                const noise = audioCtx.createBufferSource();
+                noise.buffer = buffer;
+                
+                const gain2 = audioCtx.createGain();
+                gain2.gain.setValueAtTime(0.2 + energyLevel * 0.05, audioCtx.currentTime);
+                gain2.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration * 0.3);
+                
+                noise.connect(gain2);
+                gain2.connect(audioCtx.destination);
+                noise.start();
+            } catch (e) {}
+        }
+
+
         const musicPresets = {
             techno: { bass: [110, 0, 110, 146, 110, 0, 110, 164], bassType: 'sawtooth', tempo: 140, leadFreqs: [440, 523, 587, 659], vol: 0.04 },
-            cyber: { bass: [55, 55, 82, 55, 73, 55, 82, 110], bassType: 'square', tempo: 110, leadFreqs: [220, 246, 261, 329], vol: 0.05 },
+            cyber: { bass: [196, 196, 196, 147, 196, 196, 147, 0, 220, 220, 147, 196, 174, 147, 131, 147], bassType: 'square', tempo: 145, leadFreqs: [523, 587, 659, 784, 880, 1046], vol: 0.06 },
             chip: { bass: [220, 330, 440, 330, 220, 440, 330, 440], bassType: 'triangle', tempo: 160, leadFreqs: [880, 1046, 1174, 1318], vol: 0.08 }
         };
-
+        
         function setMusicStyle(style, btn) {
             currentMusicStyle = style;
             document.querySelectorAll('.music-btn').forEach(b => { if(!b.getAttribute('onclick').includes('setBG')) b.classList.remove('active'); });
@@ -186,7 +440,7 @@
             gameState = 'PLAYING'; 
             msgUi.style.display = 'none';
             const angle = (Math.random()-0.5)*(Math.PI/4);
-            const speed = 12; 
+            const speed = 12;
             ball.dx = (ball.x < canvas.width/2 ? speed : -speed)*Math.cos(angle);
             ball.dy = speed*Math.sin(angle);
             playSound(600, 'sine', 0.2, 0.2);
@@ -206,44 +460,87 @@
         let keys = {};
         window.onkeydown = e => { keys[e.key] = true; if(e.code==='Space') serveBall(); if(e.key.includes('Arrow')) isP2AI=false; };
         window.onkeyup = e => keys[e.key] = false;
-        
-        function spawnAnomalies() {
-            if (gameState !== 'PLAYING') return;
-            if (Math.random() < 0.007 && singularities.length < 2) {
-                let spawnX = canvas.width * 0.2 + Math.random() * canvas.width * 0.6, spawnY = canvas.height * 0.2 + Math.random() * canvas.height * 0.6;
-                if (!singularities.some(s => Math.hypot(s.x - spawnX, s.y - spawnY) < 180)) {
-                    const type = Math.random() > 0.5 ? 'BLACK' : 'WHITE';
-                    singularities.push({ x: spawnX, y: spawnY, type: type, r: 50, life: 450, force: 0.38, rot: 0 });
-                    playSound(type === 'BLACK' ? 50 : 200, 'sawtooth', 0.5, 0.1); triggerShake(8);
-                }
-            } 
-            if (Math.random() < 0.004 && wormholes.length < 1) { 
-                const x = canvas.width * 0.2 + Math.random() * canvas.width * 0.6, y1 = canvas.height * 0.1 + Math.random() * canvas.height * 0.2, y2 = canvas.height * 0.7 + Math.random() * canvas.height * 0.2;
-                if (!singularities.some(s => Math.hypot(s.x - x, s.y - y1) < 150)) {
-                    wormholes.push({ a: { x: x, y: y1 }, b: { x: canvas.width - x, y: y2 }, r: 35, life: 550, cooldown: 0, rot: 0 });
+
+        // 檢查新奇點位置是否與現有奇點重疊
+        function isPositionOverlapping(x, y, minDistance = 180) {
+            // 檢查與現有黑洞/白洞的距離
+            for (let s of singularities) {
+                if (Math.hypot(s.x - x, s.y - y) < minDistance) {
+                    return true;
                 }
             }
+            // 檢查與現有蟲洞的距離
+            for (let w of wormholes) {
+                if (Math.hypot(w.a.x - x, w.a.y - y) < minDistance || 
+                    Math.hypot(w.b.x - x, w.b.y - y) < minDistance) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function spawnAnomalies() {
+            if (gameState !== 'PLAYING') return;
+            
+            // 生成黑洞或白洞
+            if (Math.random() < 0.007 && singularities.length < 2) {
+                let spawnX = canvas.width * 0.2 + Math.random() * canvas.width * 0.6, spawnY = canvas.height * 0.2 + Math.random() * canvas.height * 0.6;
+                
+                // 檢查是否與所有現有奇點重疊
+                if (!isPositionOverlapping(spawnX, spawnY, 180)) {
+                    const type = Math.random() > 0.5 ? 'BLACK' : 'WHITE';
+                    singularities.push({ x: spawnX, y: spawnY, type: type, r: 50, life: 450, force: 0.38, rot: 0 });
+                    if (type === 'BLACK') {
+                        playBlackHoleSound();
+                    } else {
+                        playWhiteHoleSound();
+                    }
+                    triggerShake(8);
+                }
+            } 
+            
+            // 生成蟲洞
+            if (Math.random() < 0.004 && wormholes.length < 1) { 
+                const x = canvas.width * 0.2 + Math.random() * canvas.width * 0.6, y1 = canvas.height * 0.1 + Math.random() * canvas.height * 0.2, y2 = canvas.height * 0.7 + Math.random() * canvas.height * 0.2;
+                
+                // 檢查蟲洞的兩個端點是否都不與現有奇點重疊
+                if (!isPositionOverlapping(x, y1, 180) && !isPositionOverlapping(canvas.width - x, y2, 180)) {
+                    wormholes.push({ a: { x: x, y: y1 }, b: { x: canvas.width - x, y: y2 }, r: 35, life: 550, cooldown: 0, rot: 0 });
+                    playWormholeSound();
+                    triggerShake(8);
+                }
+            }
+            
+            // 生成隕石
             if (Math.random() < 0.004) meteors.push({ x: Math.random() * canvas.width, y: -50, vx: (Math.random() - 0.5) * 4, vy: Math.random() * 2.5 + 1.5, r: Math.random() * 15 + 12, rot: 0, vRot: (Math.random() - 0.5) * 0.1, meteorCooldown: 0 });
         }
 
-        function createLightning(x, y, color) {
-            let segments = [], currX = x, currY = y, count = 3 + Math.floor(Math.random() * 3);
+        // --- 改良後的閃電產生器：分段數與範圍隨能量提升 ---
+        function createLightning(x, y, color, power = 0) {
+            let segments = [], currX = x, currY = y;
+            const count = Math.floor(4 + (power * 1.5));
+            const range = 50 + (power * 10);
             for(let i=0; i<count; i++) {
-                let nextX = currX + (Math.random() - 0.5) * 60, nextY = currY + (Math.random() - 0.5) * 60;
-                segments.push({x1: currX, y1: currY, x2: nextX, y2: nextY}); currX = nextX; currY = nextY;
+                let nextX = currX + (Math.random() - 0.5) * range;
+                let nextY = currY + (Math.random() - 0.5) * range;
+                segments.push({x1: currX, y1: currY, x2: nextX, y2: nextY});
+                currX = nextX; currY = nextY;
             }
-            lightnings.push({ segments, color, life: 1.0 });
+            lightnings.push({ segments, color, life: 1.0, power: power });
         }
 
         function createParticles(x, y, color, count=12, speed=12) { for(let i=0; i<count; i++) particles.push({ x, y, vx: (Math.random()-0.5)*speed, vy: (Math.random()-0.5)*speed, life: 1.0, color }); }
         
         function init() {
-            canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
             const ph = canvas.height * 0.26;
             ball = { x: canvas.width/2, y: canvas.height/2, dx: 0, dy: 0, r: 10, color: "#ffffff", energyLevel: 0, invincible: false };
             p1 = { x: 30, y: canvas.height/2-ph/2, w: 15, h: ph, score: 0, flash: 0 };
             p2 = { x: canvas.width-45, y: canvas.height/2-ph/2, w: 15, h: ph, score: 0, flash: 0 };
-            singularities = []; wormholes = []; meteors = []; fireParticles = []; ripples = []; ballParticles = []; lightnings = []; borderParticles = []; trail = []; anomalyParticles = [];
+            singularities = [];
+            wormholes = []; meteors = []; fireParticles = []; ripples = []; ballParticles = []; lightnings = [];
+            borderParticles = []; trail = []; anomalyParticles = [];
             stars = Array.from({length: 200}, () => ({ x: Math.random()*canvas.width, y: Math.random()*canvas.height, size: Math.random()*1.5+0.5, vx: (Math.random()-0.5)*0.2, vy: (Math.random()-0.5)*0.2 }));
         }
 
@@ -251,7 +548,6 @@
             globalTick += 1 * timeScale;
             if (freezeTimer > 0) { freezeTimer--; return; }
             stars.forEach(s => { s.x += s.vx * timeScale; s.y += s.vy * timeScale; if (s.x < 0) s.x = canvas.width; if (s.x > canvas.width) s.x = 0; if (s.y < 0) s.y = canvas.height; if (s.y > canvas.height) s.y = 0; });
-            
             const targetColor = { r: 0, g: 255, b: 255 };
             [topAuraColor, botAuraColor].forEach(c => {
                 c.r += (targetColor.r - c.r) * 0.05 * timeScale;
@@ -272,28 +568,31 @@
             if (gameState === 'PLAYING') {
                 spawnAnomalies();
                 let curSpd = Math.sqrt(ball.dx**2 + ball.dy**2);
-                ball.invincible = (curSpd >= 18);
+                ball.invincible = (curSpd >= 22);
 
-                // --- 無敵模式下的主動加速 ---
+                // --- 無敵模式下的主動加速 (平滑處理) ---
                 if (ball.invincible) {
-                    const accel = 0.05 * timeScale; // 每幀增加的速度
-                    const maxSpd = 45; // 速度上限，避免畫面崩潰
+                    const maxSpd = 38; 
+                    const accel = (maxSpd - curSpd) * 0.0015 * timeScale; 
                     if (curSpd < maxSpd) {
                         const ratio = (curSpd + accel) / curSpd;
-                        ball.dx *= ratio;
-                        ball.dy *= ratio;
+                        ball.dx *= ratio; ball.dy *= ratio;
                         curSpd = Math.sqrt(ball.dx**2 + ball.dy**2);
                     }
-                    if (Math.random() < 0.3) triggerShake(0.5); // 高速飛行時的持續微震動
+                    if (Math.random() < 0.3) triggerShake(0.5);
                 }
                 
                 let spawnCount = 0, pColors = [];
-                if (curSpd < 10) { ball.color = "#ffffff"; ball.energyLevel = 0; }
-                else if (curSpd < 15) { ball.color = `rgb(255, 255, ${Math.floor(255 * (1 - (curSpd-10)/5))})`; ball.energyLevel = 1; spawnCount = 1; pColors = ['#ffff00']; }
-                else if (curSpd < 20) { ball.color = `rgb(255, ${Math.floor(255 - 127 * (curSpd-15)/5)}, 0)`; ball.energyLevel = 2; spawnCount = 4; pColors = ['#ff9800', '#ffeb3b']; }
-                else { ball.color = `rgb(255, ${Math.floor(Math.max(0, 128 * (1 - (curSpd-20)/10)))}, 0)`; ball.energyLevel = 3; spawnCount = 8; pColors = ['#ff0000', '#ff5722', '#ffffff']; }
+                if (curSpd < 11) { ball.color = "#ffffff"; ball.energyLevel = 0; }
+                else if (curSpd < 16) { ball.color = `rgb(255, 255, ${Math.floor(255 * (1 - (curSpd-11)/5))})`; ball.energyLevel = 1; spawnCount = 1; pColors = ['#ffff00']; }
+                else if (curSpd < 22) { ball.color = `rgb(255, ${Math.floor(255 - 127 * (curSpd-16)/6)}, 0)`; ball.energyLevel = 2; spawnCount = 4; pColors = ['#ff9800', '#ffeb3b']; }
+                else { ball.color = `rgb(255, ${Math.floor(Math.max(0, 128 * (1 - (curSpd-22)/10)))}, 0)`; ball.energyLevel = 3; spawnCount = 8; pColors = ['#ff0000', '#ff5722', '#ffffff']; }
 
-                if (curSpd > 14 && Math.random() < (ball.invincible ? 0.4 : 0.15)) createLightning(ball.x, ball.y, ball.invincible ? "#ffeb3b" : "#00ffff");
+                // 閃電觸發：顏色隨球體變化，能量等級同步傳入 
+                if (curSpd > 14 && Math.random() < (ball.invincible ? 0.45 : 0.18)) {
+                    createLightning(ball.x, ball.y, ball.color, ball.energyLevel);
+                }
+
                 for(let i=0; i<spawnCount; i++) ballParticles.push({ x: ball.x, y: ball.y, vx: -ball.dx * 0.2 + (Math.random()-0.5)*4, vy: -ball.dy * 0.2 + (Math.random()-0.5)*4, life: 1.0, size: Math.random() * (ball.energyLevel * 2 + 2), color: pColors[Math.floor(Math.random()*pColors.length)] });
                 
                 if (ball.y + ball.r > canvas.height || ball.y - ball.r < 0) {
@@ -317,15 +616,27 @@
                         }
                     }
                     if (ball.invincible && dist < s.r + ball.r) { 
-                        createParticles(s.x, s.y, s.type==='BLACK'?'#8a2be2':'#00ffff', 40, 25); 
-                        playSound(100, 'noise', 0.4, 0.4); triggerShake(25); return false; 
+                        createParticles(s.x, s.y, s.type==='BLACK'?'#8a2be2':'#00ffff', 40, 25);
+                        
+                        // 根據類型播放不同的摧毀音效
+                        if (s.type === 'BLACK') {
+                            playBlackHoleSound(); // 黑洞被摧毀的低沉音
+                            playSound(50, 'noise', 0.5, 0.3);
+                        } else {
+                            playWhiteHoleSound(); // 白洞被摧毀的高亢音
+                            playSound(2000, 'sine', 0.3, 0.2);
+                        }
+                        
+                        triggerShake(25); 
+                        return false; 
                     } 
                     else if (!ball.invincible && dist < 320) {
-                        const angle = Math.atan2(s.y - ball.y, s.x - ball.x), power = (1 - dist/280) * s.force * 1.5; 
+                        const angle = Math.atan2(s.y - ball.y, s.x - ball.x), power = (1 - dist/280) * s.force * 1.5;
                         if (s.type === 'BLACK') { ball.dx += Math.cos(angle) * power * timeScale; ball.dy += Math.sin(angle) * power * timeScale; } 
                         else { ball.dx -= Math.cos(angle) * power * 1.8 * timeScale; ball.dy -= Math.sin(angle) * power * 1.8 * timeScale; }
                     }
-                    s.life -= 1 * timeScale; return s.life > 0;
+                    s.life -= 1 * timeScale;
+                    return s.life > 0;
                 });
 
                 wormholes = wormholes.filter(w => {
@@ -340,30 +651,120 @@
                     if (hA || hB) {
                         if (ball.invincible) { 
                             createParticles(w.a.x, w.a.y, '#00ffcc', 20, 20); createParticles(w.b.x, w.b.y, '#00ffcc', 20, 20); 
-                            playSound(120, 'noise', 0.4, 0.4); triggerShake(20); return false; 
+                            
+                            // 蟲洞被摧毀的音效
+                            playWormholeSound();
+                            playLightningSound(2); // 空間崩潰的閃電音
+                            
+                            triggerShake(20); 
+                            return false; 
                         } 
-                        else if (w.cooldown <= 0) { if (hA) { ball.x = w.b.x; ball.y = w.b.y; } else { ball.x = w.a.x; ball.y = w.a.y; } w.cooldown = 30; playSound(800, 'sine', 0.3, 0.1); }
+                        else if (w.cooldown <= 0) { 
+                            if (hA) { ball.x = w.b.x; ball.y = w.b.y; } 
+                            else { ball.x = w.a.x; ball.y = w.a.y; } 
+                            w.cooldown = 30; 
+                            
+                            // 傳送音效
+                            playWormholeSound();
+                        }
                     }
                     return w.life > 0;
                 });
 
                 const maxTrail = ball.invincible ? 40 : (10 + ball.energyLevel * 12);
-                trail.push({x: ball.x, y: ball.y, color: ball.color}); while (trail.length > maxTrail) trail.shift();
+                trail.push({x: ball.x, y: ball.y, color: ball.color});
+                while (trail.length > maxTrail) trail.shift();
                 ball.x += ball.dx * timeScale; ball.y += ball.dy * timeScale;
-                
                 [p1, p2].forEach(p => {
                     if (ball.x+ball.r > p.x && ball.x-ball.r < p.x+p.w && ball.y+ball.r > p.y && ball.y-ball.r < p.y+p.h) {
-                        let cp = (ball.y-(p.y+p.h/2))/(p.h/2), nextSpd = Math.sqrt(ball.dx**2+ball.dy**2)*1.06;
+                        let cp = (ball.y-(p.y+p.h/2))/(p.h/2), nextSpd = Math.sqrt(ball.dx**2+ball.dy**2)*1.04;
                         ball.dx = (p===p1?1:-1)*nextSpd*Math.cos(Math.PI/4*cp); ball.dy = nextSpd*Math.sin(Math.PI/4*cp);
                         ball.x = (p===p1?p1.x+p1.w+ball.r:p2.x-ball.r); p.flash = 1.0; createParticles(ball.x, ball.y, p===p1?p1Color:p2Color);
-                        playSound(440 + curSpd*10, 'triangle', 0.2, 0.2); triggerShake(nextSpd*1.8 + (nextSpd>10?Math.pow(nextSpd-10,1.8)*1.5:0)); 
+                        
+                        // 使用新的強化擊球音效
+                        playPaddleHitSound(curSpd);
+                        
+                        // 如果球速夠快，加上閃電音效
+                        if (curSpd > 15) {
+                            playLightningSound(Math.floor((curSpd - 15) / 5));
+                        }
+                        
+                        triggerShake(nextSpd*1.8 + (nextSpd>10?Math.pow(nextSpd-10,1.8)*1.5:0)); 
                     }
                 });
-
                 if (ball.x < 0 || ball.x > canvas.width) {
                     const winCol = (ball.x < 0 ? p2Color : p1Color);
-                    for(let i=0; i<[40, 80, 150, 300][ball.energyLevel]; i++) particles.push({ x: ball.x < 0 ? 0 : canvas.width, y: ball.y, vx: (ball.x < 0 ? 1 : -1) * (Math.random() * (10 + ball.energyLevel * 12)), vy: (Math.random() - 0.5) * (20 + ball.energyLevel * 12), life: 1.5 + Math.random(), color: Math.random() > 0.3 ? winCol : ball.color });
-                    playSound(60 - ball.energyLevel * 10, 'sawtooth', 1.0, 0.4); triggerShake(20 + ball.energyLevel * 15); freezeTimer = [25, 40, 60, 100][ball.energyLevel];
+                    const goalX = ball.x < 0 ? 0 : canvas.width;
+                    const goalY = ball.y;
+                    
+                    // 原有的粒子效果
+                    for(let i=0; i<[40, 80, 150, 300][ball.energyLevel]; i++) particles.push({ x: goalX, y: goalY, vx: (ball.x < 0 ? 1 : -1) * (Math.random() * (10 + ball.energyLevel * 12)), vy: (Math.random() - 0.5) * (20 + ball.energyLevel * 12), life: 1.5 + Math.random(), color: Math.random() > 0.3 ? winCol : ball.color });
+                    
+                    // 新增：進球時的閃電擴散效果
+                    const lightningCount = 6 + ball.energyLevel * 3; // 根據能量等級產生更多閃電
+                    for(let i = 0; i < lightningCount; i++) {
+                        const angle = (Math.PI * 2 * i / lightningCount) + (Math.random() - 0.5) * 0.3;
+                        const distance = 150 + ball.energyLevel * 80 + Math.random() * 100;
+                        const endX = goalX + Math.cos(angle) * distance;
+                        const endY = goalY + Math.sin(angle) * distance;
+                        
+                        // 創建從進球點向外擴散的閃電
+                        let segments = [];
+                        let currX = goalX, currY = goalY;
+                        const segmentCount = 5 + Math.floor(ball.energyLevel * 2);
+                        
+                        for(let j = 0; j < segmentCount; j++) {
+                            const t = (j + 1) / segmentCount;
+                            let nextX = goalX + (endX - goalX) * t + (Math.random() - 0.5) * 40;
+                            let nextY = goalY + (endY - goalY) * t + (Math.random() - 0.5) * 40;
+                            segments.push({x1: currX, y1: currY, x2: nextX, y2: nextY});
+                            currX = nextX;
+                            currY = nextY;
+                        }
+                        
+                        lightnings.push({ 
+                            segments, 
+                            color: Math.random() > 0.5 ? winCol : '#ffffff', 
+                            life: 1.2 + Math.random() * 0.5, 
+                            power: ball.energyLevel 
+                        });
+                    }
+                    
+                    // 額外的環形閃電波
+                    for(let ring = 0; ring < 2 + ball.energyLevel; ring++) {
+                        setTimeout(() => {
+                            const ringRadius = 80 + ring * 60;
+                            const ringSegments = 12;
+                            for(let i = 0; i < ringSegments; i++) {
+                                const angle1 = (Math.PI * 2 * i / ringSegments);
+                                const angle2 = (Math.PI * 2 * (i + 1) / ringSegments);
+                                const segments = [{
+                                    x1: goalX + Math.cos(angle1) * ringRadius,
+                                    y1: goalY + Math.sin(angle1) * ringRadius,
+                                    x2: goalX + Math.cos(angle2) * ringRadius,
+                                    y2: goalY + Math.sin(angle2) * ringRadius
+                                }];
+                                lightnings.push({ 
+                                    segments, 
+                                    color: winCol, 
+                                    life: 0.8, 
+                                    power: ball.energyLevel 
+                                });
+                            }
+                            // 為每層環形閃電播放音效
+                            playLightningSound(ball.energyLevel);
+                        }, ring * 50);
+                    }
+                    
+                    // 使用新的進球爆炸音效
+                    playGoalExplosionSound(ball.energyLevel);
+                    
+                    // 額外的閃電音效（延遲一點點製造層次感）
+                    setTimeout(() => {
+                        playLightningSound(ball.energyLevel);
+                    }, 100);
+                    
+                    triggerShake(20 + ball.energyLevel * 15); freezeTimer = [25, 40, 60, 100][ball.energyLevel];
                     if (ball.x > canvas.width) p1.score++; else p2.score++;
                     scoreUi.innerText = `${p1.score} : ${p2.score}`;
                     if (p1.score >= winTarget || p2.score >= winTarget) { gameState = 'MENU'; winMsg.innerText = `PLAYER ${p1.score>=winTarget?1:2} WINS!`; winMsg.style.color = p1.score>=winTarget?p1Color:p2Color; overlay.style.display='flex'; } 
@@ -396,7 +797,6 @@
             const topGrad = ctx.createLinearGradient(0, 0, 0, topH);
             topGrad.addColorStop(0, `rgba(${topAuraColor.r}, ${topAuraColor.g}, ${topAuraColor.b}, 0.5)`); topGrad.addColorStop(1, 'transparent');
             ctx.fillStyle = topGrad; ctx.fillRect(0, 0, canvas.width, topH);
-
             const botH = baseH + botAuraFlare + Math.sin(globalTick * 0.05) * 10;
             const botGrad = ctx.createLinearGradient(0, canvas.height, 0, canvas.height - botH);
             botGrad.addColorStop(0, `rgba(${botAuraColor.r}, ${botAuraColor.g}, ${botAuraColor.b}, 0.5)`); botGrad.addColorStop(1, 'transparent');
@@ -408,7 +808,31 @@
             ripples.forEach(r => { ctx.save(); ctx.globalAlpha = r.alpha; ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, Math.PI*2); ctx.stroke(); ctx.restore(); });
             fireParticles.forEach(p => { ctx.globalAlpha = p.life; ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill(); });
             ballParticles.forEach(p => { ctx.save(); ctx.globalAlpha = p.life; ctx.fillStyle = p.color; ctx.shadowBlur = ball.energyLevel * 5; ctx.shadowColor = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill(); ctx.restore(); });
-            lightnings.forEach(l => { ctx.save(); ctx.globalAlpha = l.life; ctx.strokeStyle = l.color; ctx.lineWidth = 2; ctx.shadowBlur = 10; ctx.shadowColor = l.color; ctx.beginPath(); l.segments.forEach(seg => { ctx.moveTo(seg.x1, seg.y1); ctx.lineTo(seg.x2, seg.y2); }); ctx.stroke(); ctx.restore(); });
+            
+            // --- 分層渲染：電漿閃電特效 (Plasma Ball Effect) ---
+            lightnings.forEach(l => { 
+                ctx.save(); 
+                ctx.globalAlpha = l.life; 
+                ctx.lineCap = "round"; ctx.lineJoin = "round";
+                
+                // 第一層：外部電漿光暈 
+                ctx.strokeStyle = l.color; 
+                ctx.lineWidth = 1.2 + (l.power * 3.5); 
+                ctx.shadowBlur = 10 + (l.power * 8); 
+                ctx.shadowColor = l.color; 
+                ctx.beginPath(); 
+                l.segments.forEach(seg => { ctx.moveTo(seg.x1, seg.y1); ctx.lineTo(seg.x2, seg.y2); }); 
+                ctx.stroke(); 
+
+                // 第二層：核心高能白線 (Plasma Core) - 僅在高等級觸發
+                if (l.power >= 2) {
+                    ctx.strokeStyle = "#ffffff";
+                    ctx.lineWidth = 1 + (l.power * 0.5);
+                    ctx.shadowBlur = 2;
+                    ctx.stroke();
+                }
+                ctx.restore(); 
+            });
 
             singularities.forEach(s => { 
                 const grad = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.r); 
@@ -425,7 +849,6 @@
                     ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.setLineDash([5, 15]); ctx.beginPath(); ctx.arc(pt.x, pt.y, w.r, w.rot, w.rot + Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
                 }); 
             });
-
             trail.forEach((t, i) => { ctx.fillStyle = t.color; ctx.globalAlpha = (i / trail.length) * 0.5; ctx.beginPath(); ctx.arc(t.x, t.y, ball.r * (0.5 + 0.5 * i / trail.length), 0, Math.PI * 2); ctx.fill(); });
             ctx.globalAlpha = 1.0; ctx.save(); ctx.shadowBlur = 10 + (ball.invincible ? 25 : ball.energyLevel * 10); ctx.shadowColor = ball.color;
             ctx.fillStyle = ball.color; ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI*2); ctx.fill(); ctx.restore();
