@@ -239,7 +239,7 @@
         
         function init() {
             canvas.width = window.innerWidth; canvas.height = window.innerHeight;
-            const ph = canvas.height * 0.21;
+            const ph = canvas.height * 0.26;
             ball = { x: canvas.width/2, y: canvas.height/2, dx: 0, dy: 0, r: 10, color: "#ffffff", energyLevel: 0, invincible: false };
             p1 = { x: 30, y: canvas.height/2-ph/2, w: 15, h: ph, score: 0, flash: 0 };
             p2 = { x: canvas.width-45, y: canvas.height/2-ph/2, w: 15, h: ph, score: 0, flash: 0 };
@@ -261,10 +261,10 @@
             topAuraFlare *= Math.pow(0.9, timeScale); botAuraFlare *= Math.pow(0.9, timeScale);
 
             if (gameState === 'MENU') return;
-            const paddleSpeed = 22 * timeScale;
+            const paddleSpeed = 28 * timeScale;
             if (keys['w'] || keys['W']) p1.y -= paddleSpeed; if (keys['s'] || keys['S']) p1.y += paddleSpeed;
             if (isP2AI && gameState === 'PLAYING') {
-                const targetY = ball.y - p2.h/2, aiSpeed = (ball.dx > 0 ? 16 : 8) * timeScale;
+                const targetY = ball.y - p2.h/2, aiSpeed = (ball.dx > 0 ? 19 : 9) * timeScale;
                 if (Math.abs(p2.y - targetY) > 10) p2.y += (p2.y < targetY ? aiSpeed : -aiSpeed);
             } else if (!isP2AI) { if (keys['ArrowUp']) p2.y -= paddleSpeed; if (keys['ArrowDown']) p2.y += paddleSpeed; }
             [p1, p2].forEach(p => p.y = Math.max(0, Math.min(canvas.height-p.h, p.y)));
@@ -320,7 +320,7 @@
                         createParticles(s.x, s.y, s.type==='BLACK'?'#8a2be2':'#00ffff', 40, 25); 
                         playSound(100, 'noise', 0.4, 0.4); triggerShake(25); return false; 
                     } 
-                    else if (!ball.invincible && dist < 280) {
+                    else if (!ball.invincible && dist < 320) {
                         const angle = Math.atan2(s.y - ball.y, s.x - ball.x), power = (1 - dist/280) * s.force * 1.5; 
                         if (s.type === 'BLACK') { ball.dx += Math.cos(angle) * power * timeScale; ball.dy += Math.sin(angle) * power * timeScale; } 
                         else { ball.dx -= Math.cos(angle) * power * 1.8 * timeScale; ball.dy -= Math.sin(angle) * power * 1.8 * timeScale; }
@@ -356,7 +356,7 @@
                         let cp = (ball.y-(p.y+p.h/2))/(p.h/2), nextSpd = Math.sqrt(ball.dx**2+ball.dy**2)*1.06;
                         ball.dx = (p===p1?1:-1)*nextSpd*Math.cos(Math.PI/4*cp); ball.dy = nextSpd*Math.sin(Math.PI/4*cp);
                         ball.x = (p===p1?p1.x+p1.w+ball.r:p2.x-ball.r); p.flash = 1.0; createParticles(ball.x, ball.y, p===p1?p1Color:p2Color);
-                        playSound(440 + curSpd*10, 'triangle', 0.2, 0.2); triggerShake(nextSpd*1.8 + (nextSpd>10?Math.pow(nextSpd-10,1.8)*3.5:0)); 
+                        playSound(440 + curSpd*10, 'triangle', 0.2, 0.2); triggerShake(nextSpd*1.8 + (nextSpd>10?Math.pow(nextSpd-10,1.8)*1.5:0)); 
                     }
                 });
 
@@ -383,7 +383,7 @@
             lightnings = lightnings.filter(l => { l.life -= 0.15 * timeScale; return l.life > 0; });
             ripples = ripples.filter(r => { r.r += 4 * timeScale; r.alpha -= 0.03 * timeScale; return r.alpha > 0; });
             particles = particles.filter(p => { p.x+=p.vx * timeScale; p.y+=p.vy * timeScale; p.life-=0.02 * timeScale; return p.life>0; });
-            if (shakeAmount > 0) shakeAmount *= 0.88; 
+            if (shakeAmount > 0) shakeAmount *= 0.85; 
         }
 
         function draw() {
