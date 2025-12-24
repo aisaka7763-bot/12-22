@@ -128,7 +128,7 @@
 
         let singularities = []; 
         let wormholes = [];
-        let meteors = [], fireParticles = [], ripples = [], ballParticles = [], lightnings = [], borderParticles = [], anomalyParticles = [];
+        let ripples = [], ballParticles = [], lightnings = [], borderParticles = [], anomalyParticles = [];
         let shakeAmount = 0, freezeTimer = 0;
         let particles = [], stars = [], trail = [], ball, p1, p2, gameState = 'MENU', isP2AI = true;
         
@@ -439,6 +439,8 @@
             if (gameState !== 'WAITING_SERVE' || freezeTimer > 0) return;
             gameState = 'PLAYING'; 
             msgUi.style.display = 'none';
+            ball.r = ball.baseR;            // 重製球的半徑為初始值 
+            ball.absorptionCount = 0;      // 重製吸收奇點的計數
             const angle = (Math.random()-0.5)*(Math.PI/4);
             const speed = 12;
             ball.dx = (ball.x < canvas.width/2 ? speed : -speed)*Math.cos(angle);
@@ -489,7 +491,24 @@
                 // 檢查是否與所有現有奇點重疊
                 if (!isPositionOverlapping(spawnX, spawnY, 180)) {
                     const type = Math.random() > 0.5 ? 'BLACK' : 'WHITE';
-                    singularities.push({ x: spawnX, y: spawnY, type: type, r: 50, life: 450, force: 0.38, rot: 0 });
+                    // 加入浮動速度和初始相位
+                    const driftSpeed = 0.3 + Math.random() * 0.4;
+                    const driftAngle = Math.random() * Math.PI * 2;
+                    const driftPhase = Math.random() * Math.PI * 2;
+                    singularities.push({ 
+                        x: spawnX, 
+                        y: spawnY, 
+                        baseX: spawnX,
+                        baseY: spawnY,
+                        type: type, 
+                        r: 50, 
+                        life: 450, 
+                        force: 0.38, 
+                        rot: 0,
+                        driftSpeed: driftSpeed,
+                        driftAngle: driftAngle,
+                        driftPhase: driftPhase
+                    });
                     if (type === 'BLACK') {
                         playBlackHoleSound();
                     } else {
@@ -505,14 +524,24 @@
                 
                 // 檢查蟲洞的兩個端點是否都不與現有奇點重疊
                 if (!isPositionOverlapping(x, y1, 180) && !isPositionOverlapping(canvas.width - x, y2, 180)) {
-                    wormholes.push({ a: { x: x, y: y1 }, b: { x: canvas.width - x, y: y2 }, r: 35, life: 550, cooldown: 0, rot: 0 });
+                    const driftSpeed = 0.25 + Math.random() * 0.35;
+                    const driftPhaseA = Math.random() * Math.PI * 2;
+                    const driftPhaseB = Math.random() * Math.PI * 2;
+                    wormholes.push({ 
+                        a: { x: x, y: y1, baseX: x, baseY: y1 }, 
+                        b: { x: canvas.width - x, y: y2, baseX: canvas.width - x, baseY: y2 }, 
+                        r: 35, 
+                        life: 550, 
+                        cooldown: 0, 
+                        rot: 0,
+                        driftSpeed: driftSpeed,
+                        driftPhaseA: driftPhaseA,
+                        driftPhaseB: driftPhaseB
+                    });
                     playWormholeSound();
                     triggerShake(8);
                 }
             }
-            
-            // 生成隕石
-            if (Math.random() < 0.004) meteors.push({ x: Math.random() * canvas.width, y: -50, vx: (Math.random() - 0.5) * 4, vy: Math.random() * 2.5 + 1.5, r: Math.random() * 15 + 12, rot: 0, vRot: (Math.random() - 0.5) * 0.1, meteorCooldown: 0 });
         }
 
         // --- 改良後的閃電產生器：分段數與範圍隨能量提升 ---
@@ -534,12 +563,12 @@
         function init() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
-            const ph = canvas.height * 0.26;
-            ball = { x: canvas.width/2, y: canvas.height/2, dx: 0, dy: 0, r: 10, color: "#ffffff", energyLevel: 0, invincible: false };
+            const ph = canvas.height * 0.28;
+            ball = { x: canvas.width/2, y: canvas.height/2, dx: 0, dy: 0, r: 10, baseR: 10, absorptionCount: 0, color: "#ffffff", energyLevel: 0, invincible: false };
             p1 = { x: 30, y: canvas.height/2-ph/2, w: 15, h: ph, score: 0, flash: 0 };
             p2 = { x: canvas.width-45, y: canvas.height/2-ph/2, w: 15, h: ph, score: 0, flash: 0 };
             singularities = [];
-            wormholes = []; meteors = []; fireParticles = []; ripples = []; ballParticles = []; lightnings = [];
+            wormholes = []; ripples = []; ballParticles = []; lightnings = [];
             borderParticles = []; trail = []; anomalyParticles = [];
             stars = Array.from({length: 200}, () => ({ x: Math.random()*canvas.width, y: Math.random()*canvas.height, size: Math.random()*1.5+0.5, vx: (Math.random()-0.5)*0.2, vy: (Math.random()-0.5)*0.2 }));
         }
@@ -557,7 +586,7 @@
             topAuraFlare *= Math.pow(0.9, timeScale); botAuraFlare *= Math.pow(0.9, timeScale);
 
             if (gameState === 'MENU') return;
-            const paddleSpeed = 28 * timeScale;
+            const paddleSpeed = 29 * timeScale;
             if (keys['w'] || keys['W']) p1.y -= paddleSpeed; if (keys['s'] || keys['S']) p1.y += paddleSpeed;
             if (isP2AI && gameState === 'PLAYING') {
                 const targetY = ball.y - p2.h/2, aiSpeed = (ball.dx > 0 ? 19 : 9) * timeScale;
@@ -604,6 +633,13 @@
                 }
 
                 singularities = singularities.filter(s => {
+                    // 更新黑洞白洞的浮動位置
+                    if (s.baseX !== undefined) {
+                        const driftX = Math.sin(globalTick * 0.02 * s.driftSpeed + s.driftPhase) * 15;
+                        const driftY = Math.cos(globalTick * 0.015 * s.driftSpeed + s.driftPhase + s.driftAngle) * 15;
+                        s.x = s.baseX + driftX;
+                        s.y = s.baseY + driftY;
+                    }
                     const dist = Math.hypot(s.x - ball.x, s.y - ball.y);
                     s.rot += 0.05 * timeScale;
                     if (Math.random() < 0.4) {
@@ -618,6 +654,27 @@
                     if (ball.invincible && dist < s.r + ball.r) { 
                         createParticles(s.x, s.y, s.type==='BLACK'?'#8a2be2':'#00ffff', 40, 25);
                         
+                        // 吸收奇點力量！球變大
+                        ball.absorptionCount++;
+                        ball.r = ball.baseR + ball.absorptionCount * 2.5; // 每吸收一個增加2.5半徑
+                        
+                        // 吸收特效：從奇點向球發射能量粒子
+                        for(let i = 0; i < 20; i++) {
+                            const angle = (Math.PI * 2 * i / 20);
+                            const color = s.type === 'BLACK' ? '#8a2be2' : '#00ffff';
+                            anomalyParticles.push({
+                                x: s.x,
+                                y: s.y,
+                                vx: Math.cos(angle) * 8,
+                                vy: Math.sin(angle) * 8,
+                                life: 0.8,
+                                type: 'ABSORB',
+                                color: color,
+                                targetX: ball.x,
+                                targetY: ball.y
+                            });
+                        }
+                        
                         // 根據類型播放不同的摧毀音效
                         if (s.type === 'BLACK') {
                             playBlackHoleSound(); // 黑洞被摧毀的低沉音
@@ -626,6 +683,9 @@
                             playWhiteHoleSound(); // 白洞被摧毀的高亢音
                             playSound(2000, 'sine', 0.3, 0.2);
                         }
+                        
+                        // 吸收音效
+                        playSound(400 + ball.absorptionCount * 100, 'sine', 0.3, 0.15);
                         
                         triggerShake(25); 
                         return false; 
@@ -640,6 +700,18 @@
                 });
 
                 wormholes = wormholes.filter(w => {
+                    // 更新蟲洞端點的浮動位置
+                    if (w.a.baseX !== undefined) {
+                        const driftAX = Math.sin(globalTick * 0.018 * w.driftSpeed + w.driftPhaseA) * 12;
+                        const driftAY = Math.cos(globalTick * 0.014 * w.driftSpeed + w.driftPhaseA) * 12;
+                        w.a.x = w.a.baseX + driftAX;
+                        w.a.y = w.a.baseY + driftAY;
+                        
+                        const driftBX = Math.sin(globalTick * 0.02 * w.driftSpeed + w.driftPhaseB) * 12;
+                        const driftBY = Math.cos(globalTick * 0.016 * w.driftSpeed + w.driftPhaseB) * 12;
+                        w.b.x = w.b.baseX + driftBX;
+                        w.b.y = w.b.baseY + driftBY;
+                    }
                     w.life -= 1 * timeScale; w.rot += 0.08 * timeScale; if(w.cooldown > 0) w.cooldown -= 1 * timeScale;
                     [w.a, w.b].forEach(pt => {
                         if (Math.random() < 0.3) {
@@ -652,9 +724,34 @@
                         if (ball.invincible) { 
                             createParticles(w.a.x, w.a.y, '#00ffcc', 20, 20); createParticles(w.b.x, w.b.y, '#00ffcc', 20, 20); 
                             
+                            // 吸收蟲洞力量！球變大
+                            ball.absorptionCount++;
+                            ball.r = ball.baseR + ball.absorptionCount * 2.5;
+                            
+                            // 從兩個端點向球發射能量粒子
+                            [w.a, w.b].forEach(pt => {
+                                for(let i = 0; i < 15; i++) {
+                                    const angle = (Math.PI * 2 * i / 15);
+                                    anomalyParticles.push({
+                                        x: pt.x,
+                                        y: pt.y,
+                                        vx: Math.cos(angle) * 10,
+                                        vy: Math.sin(angle) * 10,
+                                        life: 0.8,
+                                        type: 'ABSORB',
+                                        color: '#00ffcc',
+                                        targetX: ball.x,
+                                        targetY: ball.y
+                                    });
+                                }
+                            });
+                            
                             // 蟲洞被摧毀的音效
                             playWormholeSound();
                             playLightningSound(2); // 空間崩潰的閃電音
+                            
+                            // 吸收音效
+                            playSound(400 + ball.absorptionCount * 100, 'sine', 0.3, 0.15);
                             
                             triggerShake(20); 
                             return false; 
@@ -768,7 +865,20 @@
                     if (ball.x > canvas.width) p1.score++; else p2.score++;
                     scoreUi.innerText = `${p1.score} : ${p2.score}`;
                     if (p1.score >= winTarget || p2.score >= winTarget) { gameState = 'MENU'; winMsg.innerText = `PLAYER ${p1.score>=winTarget?1:2} WINS!`; winMsg.style.color = p1.score>=winTarget?p1Color:p2Color; overlay.style.display='flex'; } 
-                    else { gameState = 'WAITING_SERVE'; msgUi.style.display='block'; ball.x = canvas.width/2; ball.y = canvas.height/2; ball.dx = 0; ball.dy = 0; singularities = []; wormholes = []; meteors=[]; ballParticles=[]; lightnings=[]; }
+                    else { 
+                        gameState = 'WAITING_SERVE'; 
+                        msgUi.style.display='block'; 
+                        // 隨機決定球的位置（左側或右側）
+                        const serveFromLeft = Math.random() < 0.5;
+                        ball.x = serveFromLeft ? canvas.width * 0.25 : canvas.width * 0.75;
+                        ball.y = canvas.height/2; 
+                        ball.dx = 0; 
+                        ball.dy = 0; 
+                        singularities = []; 
+                        wormholes = []; 
+                        ballParticles=[]; 
+                        lightnings=[]; 
+                    }
                 }
             }
             anomalyParticles = anomalyParticles.filter(p => {
@@ -776,9 +886,23 @@
                 if (p.type === 'IN') { p.r -= 1.2 * timeScale; p.ang += 0.1 * timeScale; p.x = p.cx + Math.cos(p.ang)*p.r; p.y = p.cy + Math.sin(p.ang)*p.r; }
                 else if (p.type === 'OUT') { p.x += p.vx * timeScale; p.y += p.vy * timeScale; }
                 else if (p.type === 'ORBIT') { p.ang += 0.15 * timeScale; p.x = p.cx + Math.cos(p.ang)*p.r; p.y = p.cy + Math.sin(p.ang)*p.r; }
+                else if (p.type === 'ABSORB') { 
+                    // 粒子飛向球的位置
+                    const dx = p.targetX - p.x;
+                    const dy = p.targetY - p.y;
+                    const dist = Math.hypot(dx, dy);
+                    if (dist > 5) {
+                        p.vx = (dx / dist) * 12;
+                        p.vy = (dy / dist) * 12;
+                        p.x += p.vx * timeScale;
+                        p.y += p.vy * timeScale;
+                    } else {
+                        // 到達球的位置就消失
+                        p.life = 0;
+                    }
+                }
                 return p.life > 0 && (p.type !== 'IN' || p.r > 5);
             });
-            fireParticles = fireParticles.filter(p => { p.y += p.vy * timeScale; p.life -= 0.04 * timeScale; return p.life > 0; });
             ballParticles = ballParticles.filter(p => { p.x += p.vx * timeScale; p.y += p.vy * timeScale; p.life -= 0.03 * timeScale; return p.life > 0; });
             borderParticles = borderParticles.filter(p => { p.x += p.vx * timeScale; p.y += p.vy * timeScale; p.life -= (p.type==='BURST' ? 0.04 : 0.02) * timeScale; if(p.type==='BURST') p.vx *= 0.95; return p.life > 0; });
             lightnings = lightnings.filter(l => { l.life -= 0.15 * timeScale; return l.life > 0; });
@@ -806,7 +930,6 @@
             anomalyParticles.forEach(p => { ctx.fillStyle = p.color; ctx.globalAlpha = p.life; ctx.fillRect(p.x, p.y, 2, 2); });
             borderParticles.forEach(p => { ctx.fillStyle = p.color; ctx.globalAlpha = p.life * 0.6; if(p.type==='BURST') ctx.fillRect(p.x, p.y, 6, 2); else ctx.fillRect(p.x, p.y, 2, 2); });
             ripples.forEach(r => { ctx.save(); ctx.globalAlpha = r.alpha; ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, Math.PI*2); ctx.stroke(); ctx.restore(); });
-            fireParticles.forEach(p => { ctx.globalAlpha = p.life; ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill(); });
             ballParticles.forEach(p => { ctx.save(); ctx.globalAlpha = p.life; ctx.fillStyle = p.color; ctx.shadowBlur = ball.energyLevel * 5; ctx.shadowColor = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill(); ctx.restore(); });
             
             // --- 分層渲染：電漿閃電特效 (Plasma Ball Effect) ---
@@ -835,19 +958,281 @@
             });
 
             singularities.forEach(s => { 
-                const grad = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.r); 
-                if (s.type === 'BLACK') { grad.addColorStop(0, '#000'); grad.addColorStop(0.3, '#000'); grad.addColorStop(0.6, '#4b0082'); grad.addColorStop(1, 'transparent'); } 
-                else { grad.addColorStop(0, '#fff'); grad.addColorStop(0.3, '#fff'); grad.addColorStop(0.6, '#00ffff'); grad.addColorStop(1, 'transparent'); } 
-                ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(s.x, s.y, s.r + Math.sin(globalTick*0.1)*8, 0, Math.PI*2); ctx.fill();
-                ctx.fillStyle = s.type === 'BLACK' ? '#000' : '#fff'; ctx.beginPath(); ctx.arc(s.x, s.y, s.r * 0.4, 0, Math.PI*2); ctx.fill();
+                ctx.save();
+                
+                if (s.type === 'BLACK') {
+                    // === 黑洞渲染 ===
+                    
+                    // 1. 外層吸積盤光環（多層螺旋）
+                    for (let ring = 3; ring >= 1; ring--) {
+                        const ringRadius = s.r * (0.7 + ring * 0.25);
+                        const gradient = ctx.createRadialGradient(s.x, s.y, ringRadius * 0.3, s.x, s.y, ringRadius);
+                        
+                        if (ring === 3) {
+                            gradient.addColorStop(0, 'rgba(138, 43, 226, 0.4)'); // 紫色
+                            gradient.addColorStop(0.5, 'rgba(75, 0, 130, 0.3)');
+                            gradient.addColorStop(1, 'transparent');
+                        } else if (ring === 2) {
+                            gradient.addColorStop(0, 'rgba(255, 100, 0, 0.35)'); // 橙色
+                            gradient.addColorStop(0.5, 'rgba(200, 50, 50, 0.25)');
+                            gradient.addColorStop(1, 'transparent');
+                        } else {
+                            gradient.addColorStop(0, 'rgba(255, 200, 100, 0.3)'); // 黃橙色
+                            gradient.addColorStop(0.5, 'rgba(255, 150, 50, 0.2)');
+                            gradient.addColorStop(1, 'transparent');
+                        }
+                        
+                        ctx.fillStyle = gradient;
+                        ctx.beginPath();
+                        ctx.arc(s.x, s.y, ringRadius, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    
+                    // 2. 螺旋吸積盤線條（順時針旋轉）
+                    ctx.strokeStyle = 'rgba(255, 150, 50, 0.6)';
+                    ctx.lineWidth = 2;
+                    const spiralArms = 3;
+                    for (let arm = 0; arm < spiralArms; arm++) {
+                        ctx.beginPath();
+                        for (let i = 0; i < 50; i++) {
+                            const t = i / 50;
+                            const angle = s.rot * 2 + arm * (Math.PI * 2 / spiralArms) + t * Math.PI * 4;
+                            const radius = s.r * 0.4 + t * s.r * 0.8;
+                            const x = s.x + Math.cos(angle) * radius;
+                            const y = s.y + Math.sin(angle) * radius;
+                            if (i === 0) ctx.moveTo(x, y);
+                            else ctx.lineTo(x, y);
+                        }
+                        ctx.globalAlpha = 0.4;
+                        ctx.stroke();
+                        ctx.globalAlpha = 1;
+                    }
+                    
+                    // 3. 事件視界（絕對黑的核心）
+                    const eventHorizon = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.r * 0.35);
+                    eventHorizon.addColorStop(0, '#000000');
+                    eventHorizon.addColorStop(0.8, '#000000');
+                    eventHorizon.addColorStop(1, 'rgba(0, 0, 0, 0.5)');
+                    ctx.fillStyle = eventHorizon;
+                    ctx.beginPath();
+                    ctx.arc(s.x, s.y, s.r * 0.35, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    // 4. 引力透鏡效果（邊緣高光）
+                    ctx.strokeStyle = 'rgba(100, 150, 255, 0.6)';
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.arc(s.x, s.y, s.r * 0.36, 0, Math.PI * 2);
+                    ctx.stroke();
+                    
+                } else {
+                    // === 白洞渲染 ===
+                    
+                    // 1. 內層爆發核心（超亮白光）
+                    const coreGrad = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.r * 0.3);
+                    coreGrad.addColorStop(0, '#ffffff');
+                    coreGrad.addColorStop(0.5, '#ffffff');
+                    coreGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                    ctx.fillStyle = coreGrad;
+                    ctx.shadowBlur = 30;
+                    ctx.shadowColor = '#ffffff';
+                    ctx.beginPath();
+                    ctx.arc(s.x, s.y, s.r * 0.3, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                    
+                    // 2. 多層能量波環（向外擴散）
+                    for (let ring = 1; ring <= 3; ring++) {
+                        const ringRadius = s.r * (0.4 + ring * 0.25);
+                        const pulseOffset = Math.sin(globalTick * 0.1 + ring * 0.5) * 8;
+                        const gradient = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, ringRadius + pulseOffset);
+                        
+                        if (ring === 1) {
+                            gradient.addColorStop(0, 'rgba(255, 255, 255, 0.5)');
+                            gradient.addColorStop(0.5, 'rgba(0, 255, 255, 0.4)');
+                            gradient.addColorStop(1, 'transparent');
+                        } else if (ring === 2) {
+                            gradient.addColorStop(0, 'rgba(0, 255, 255, 0.35)');
+                            gradient.addColorStop(0.6, 'rgba(100, 200, 255, 0.25)');
+                            gradient.addColorStop(1, 'transparent');
+                        } else {
+                            gradient.addColorStop(0, 'rgba(150, 220, 255, 0.25)');
+                            gradient.addColorStop(0.7, 'rgba(200, 240, 255, 0.15)');
+                            gradient.addColorStop(1, 'transparent');
+                        }
+                        
+                        ctx.fillStyle = gradient;
+                        ctx.beginPath();
+                        ctx.arc(s.x, s.y, ringRadius + pulseOffset, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    
+                    // 3. 螺旋噴射線條（逆時針旋轉，向外）
+                    ctx.strokeStyle = 'rgba(0, 255, 255, 0.7)';
+                    ctx.lineWidth = 2.5;
+                    const ejectArms = 4;
+                    for (let arm = 0; arm < ejectArms; arm++) {
+                        ctx.beginPath();
+                        for (let i = 0; i < 40; i++) {
+                            const t = i / 40;
+                            const angle = -s.rot * 2.5 + arm * (Math.PI * 2 / ejectArms) + t * Math.PI * 3;
+                            const radius = s.r * 0.2 + t * s.r * 1.0;
+                            const x = s.x + Math.cos(angle) * radius;
+                            const y = s.y + Math.sin(angle) * radius;
+                            if (i === 0) ctx.moveTo(x, y);
+                            else ctx.lineTo(x, y);
+                        }
+                        ctx.globalAlpha = 0.5 * (1 - Math.abs(Math.sin(globalTick * 0.08 + arm * 0.5)));
+                        ctx.stroke();
+                        ctx.globalAlpha = 1;
+                    }
+                    
+                    // 4. 光芒射線（8個方向）
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+                    ctx.lineWidth = 2;
+                    for (let ray = 0; ray < 8; ray++) {
+                        const angle = ray * (Math.PI / 4) + globalTick * 0.02;
+                        const innerR = s.r * 0.35;
+                        const outerR = s.r * 0.8 + Math.sin(globalTick * 0.1 + ray) * 10;
+                        ctx.beginPath();
+                        ctx.moveTo(s.x + Math.cos(angle) * innerR, s.y + Math.sin(angle) * innerR);
+                        ctx.lineTo(s.x + Math.cos(angle) * outerR, s.y + Math.sin(angle) * outerR);
+                        ctx.globalAlpha = 0.3 + Math.sin(globalTick * 0.15 + ray * 0.3) * 0.2;
+                        ctx.stroke();
+                        ctx.globalAlpha = 1;
+                    }
+                }
+                
+                ctx.restore();
             });
             wormholes.forEach(w => { 
-                [w.a, w.b].forEach(pt => { 
-                    const grad = ctx.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, w.r); 
-                    grad.addColorStop(0, '#fff'); grad.addColorStop(0.4, '#00ffcc'); grad.addColorStop(1, 'transparent'); 
-                    ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(pt.x, pt.y, w.r, 0, Math.PI*2); ctx.fill();
-                    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.setLineDash([5, 15]); ctx.beginPath(); ctx.arc(pt.x, pt.y, w.r, w.rot, w.rot + Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+                [w.a, w.b].forEach(pt => {
+                    ctx.save();
+                    
+                    // 1. 外層時空扭曲效果（多層同心圓）
+                    for (let ring = 4; ring >= 1; ring--) {
+                        const ringRadius = w.r * (0.4 + ring * 0.2);
+                        const pulseOffset = Math.sin(globalTick * 0.08 + ring * 0.7) * 5;
+                        
+                        const gradient = ctx.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, ringRadius + pulseOffset);
+                        
+                        if (ring === 4) {
+                            gradient.addColorStop(0, 'rgba(0, 255, 204, 0.15)');
+                            gradient.addColorStop(0.6, 'rgba(0, 200, 255, 0.1)');
+                            gradient.addColorStop(1, 'transparent');
+                        } else if (ring === 3) {
+                            gradient.addColorStop(0, 'rgba(0, 255, 204, 0.25)');
+                            gradient.addColorStop(0.6, 'rgba(0, 220, 255, 0.15)');
+                            gradient.addColorStop(1, 'transparent');
+                        } else if (ring === 2) {
+                            gradient.addColorStop(0, 'rgba(100, 255, 255, 0.35)');
+                            gradient.addColorStop(0.5, 'rgba(0, 255, 204, 0.2)');
+                            gradient.addColorStop(1, 'transparent');
+                        } else {
+                            gradient.addColorStop(0, 'rgba(200, 255, 255, 0.4)');
+                            gradient.addColorStop(0.4, 'rgba(100, 255, 230, 0.25)');
+                            gradient.addColorStop(1, 'transparent');
+                        }
+                        
+                        ctx.fillStyle = gradient;
+                        ctx.beginPath();
+                        ctx.arc(pt.x, pt.y, ringRadius + pulseOffset, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    
+                    // 2. 螺旋時空漩渦（6條旋轉臂）
+                    ctx.strokeStyle = 'rgba(0, 255, 204, 0.7)';
+                    ctx.lineWidth = 2;
+                    const arms = 6;
+                    for (let arm = 0; arm < arms; arm++) {
+                        ctx.beginPath();
+                        for (let i = 0; i < 30; i++) {
+                            const t = i / 30;
+                            const angle = w.rot * 3 + arm * (Math.PI * 2 / arms) + t * Math.PI * 5;
+                            const radius = w.r * 0.15 + t * w.r * 0.75;
+                            const x = pt.x + Math.cos(angle) * radius;
+                            const y = pt.y + Math.sin(angle) * radius;
+                            if (i === 0) ctx.moveTo(x, y);
+                            else ctx.lineTo(x, y);
+                        }
+                        ctx.globalAlpha = 0.5 + Math.sin(globalTick * 0.1 + arm * 0.5) * 0.2;
+                        ctx.stroke();
+                        ctx.globalAlpha = 1;
+                    }
+                    
+                    // 3. 內層光暈核心
+                    const coreGrad = ctx.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, w.r * 0.25);
+                    coreGrad.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+                    coreGrad.addColorStop(0.5, 'rgba(0, 255, 204, 0.6)');
+                    coreGrad.addColorStop(1, 'transparent');
+                    ctx.fillStyle = coreGrad;
+                    ctx.shadowBlur = 20;
+                    ctx.shadowColor = '#00ffcc';
+                    ctx.beginPath();
+                    ctx.arc(pt.x, pt.y, w.r * 0.25, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                    
+                    // 4. 旋轉虛線環（時空撕裂效果）
+                    for (let layer = 0; layer < 3; layer++) {
+                        const layerRadius = w.r * (0.5 + layer * 0.15);
+                        const dashLength = 8 - layer * 2;
+                        const gapLength = 20 - layer * 5;
+                        
+                        ctx.strokeStyle = `rgba(0, 255, 255, ${0.6 - layer * 0.15})`;
+                        ctx.lineWidth = 2 - layer * 0.3;
+                        ctx.setLineDash([dashLength, gapLength]);
+                        ctx.beginPath();
+                        ctx.arc(pt.x, pt.y, layerRadius, w.rot * (1 + layer * 0.5), w.rot * (1 + layer * 0.5) + Math.PI * 2);
+                        ctx.stroke();
+                        ctx.setLineDash([]);
+                    }
+                    
+                    // 5. 電弧閃光效果（隨機出現）
+                    if (Math.random() < 0.15) {
+                        const arcCount = 3;
+                        for (let i = 0; i < arcCount; i++) {
+                            const startAngle = Math.random() * Math.PI * 2;
+                            const endAngle = startAngle + (Math.random() * 0.5 + 0.3);
+                            const arcRadius = w.r * (0.3 + Math.random() * 0.4);
+                            
+                            ctx.strokeStyle = 'rgba(100, 255, 255, 0.8)';
+                            ctx.lineWidth = 1.5;
+                            ctx.beginPath();
+                            ctx.arc(pt.x, pt.y, arcRadius, startAngle, endAngle);
+                            ctx.stroke();
+                        }
+                    }
+                    
+                    ctx.restore();
                 }); 
+                
+                // 6. 連接兩個端點的能量束（如果兩個點都存在）
+                if (w.a && w.b) {
+                    ctx.save();
+                    
+                    // 繪製多條扭曲的連接線
+                    const connectionLines = 5;
+                    for (let line = 0; line < connectionLines; line++) {
+                        ctx.beginPath();
+                        ctx.moveTo(w.a.x, w.a.y);
+                        
+                        // 使用貝塞爾曲線創造扭曲效果
+                        const midX = (w.a.x + w.b.x) / 2;
+                        const midY = (w.a.y + w.b.y) / 2;
+                        const offset = Math.sin(globalTick * 0.05 + line * 0.5) * 30;
+                        const perpX = -(w.b.y - w.a.y) / Math.hypot(w.b.x - w.a.x, w.b.y - w.a.y) * offset;
+                        const perpY = (w.b.x - w.a.x) / Math.hypot(w.b.x - w.a.x, w.b.y - w.a.y) * offset;
+                        
+                        ctx.quadraticCurveTo(midX + perpX, midY + perpY, w.b.x, w.b.y);
+                        
+                        ctx.strokeStyle = `rgba(0, 255, 204, ${0.15 - line * 0.02})`;
+                        ctx.lineWidth = 3 - line * 0.4;
+                        ctx.stroke();
+                    }
+                    
+                    ctx.restore();
+                }
             });
             trail.forEach((t, i) => { ctx.fillStyle = t.color; ctx.globalAlpha = (i / trail.length) * 0.5; ctx.beginPath(); ctx.arc(t.x, t.y, ball.r * (0.5 + 0.5 * i / trail.length), 0, Math.PI * 2); ctx.fill(); });
             ctx.globalAlpha = 1.0; ctx.save(); ctx.shadowBlur = 10 + (ball.invincible ? 25 : ball.energyLevel * 10); ctx.shadowColor = ball.color;
